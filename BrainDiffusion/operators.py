@@ -319,9 +319,6 @@ def solve_forward_cg(params, roi_id):
     c[c < 0.0] = 0.0
 
     c_3d = cp.real(c.reshape((N, N, N)))
-    fname_1 = os.path.join(params.out_dir, 'c1_%d_t_{}.nii.gz'.format(roi_id, t)) # save the resulting solution.
-    writeNII(c_3d.get(), fname_1, ref_image=params.affine)
-
     c_3d_copy = c_3d.copy()
     c_3d_copy[c_3d_copy < c_inf] = 0
     c_accum_result += c_3d_copy

@@ -30,9 +30,6 @@ link-citations: true
 
 `BrainDiffusion` is a Python package for creating a weighted graph representing brain white-matter fiber tract connectivity between gray matter regions. Such graphs are commonly used in neuroimaging workflows. The code input is (1) a magnetic resonance (MR) T1 image; (2) an MR diffusion-tensor image (DTI); and (3) a brain parcellation, which segments the MR T1 image into regions of interest (ROIs). The code output is a directed graph with vertices as gray matter ROIs, and edge weights indicating inter-region connectivity strength. In contrast to traditional methods involving parameter tuning relating to denoising, fiber groupings, and resolving fiber intersections, `BrainDiffusion` uses a different approach. It solves an anisotropic partial differential equation (PDE) on the MR image space to construct an anatomical connectivity matrix. To find the edge weights between a  vertex (source ROI) to the all the other vertices (target ROIs), the algorithm assigns a pseudo-concentration in the start ROI, solves a mass diffusion equation, and integrates the resulting concentration in the target ROIs. These per-ROI integrals are the edge weights. The graph weights are computed by by repeating this step for each vertex.  Notably, this technique does not reconstruct explicit fiber tracks; it only relies on MR DTI and parcellation data. The method requires $O(m)$ PDE solves, where $m$ is the number of parcels. 
 
-<!--- GB remove: Importantly, the approach does not offer fiber structure information in the image space. Changes in ROIs require recalculation.  --->
-
-
 # Statement of need
 
 Brain white-matter connectivity and graph-based representations have diverse applications in neuroscience and clinical neuroimaging, including mental health [@eickhoff2018imaging], oncology, functional connectivity analysis [@biswal1995functional], disease diagnosis and classification [@craddock2009disease], surgical planning [@potgieser2014role], and population studies. Brain parcellation and graph abstraction are used as a means of compression, denoising, and summarization. Furthermore a brain's adjacency matrix unveils complex ROI relationships, offering insights into behavior and cognition [@lang2012brain].
@@ -57,17 +54,9 @@ where $\mathbf{K}(\mathbf{x})$ is defined as
 \begin{align}
   \mathbf{K}(\mathbf{x}) = \mathbf{D}(\mathbf{x}) (\mathbf{m}_{\text{wm}} + \Tilde{\alpha} \mathbf{m}_{\text{gm}}).
 \end{align}
-$\mathbf{D}(\mathbf{x})$ is a pointwise diffusion tensor which is extracted by the DTI,
-<!-- GB: we need a reference bib on how D is extracted by the DTI-->
- $\mathbf{m}_{\text{wm}}$ and $\mathbf{m}_{\text{gm}}$ are the segmentation mask of white matter and grey matter, and $\Tilde{\alpha}\in\mathbb{R}_+$ is the ratio between the diffusivity in the white matter over the gray matter. From the literature, we set $\Tilde{\alpha}=10^{-2}$ [@giese1996migration]. We solve the above PDE in the time period $t\in\left[0, T\right]$, where $T$ is the time horizon.
-<!--- The solution $\mathbf{c}(\mathbf{x}, T)$ describes the diffusion result among target regions, which defines the connection strength between the source region $\mathcal{S}$ and target regions $\mathcal{T}$.--->
-<!--- GB: Is the diffusion equation non-dimensionalized? so that brain domain width==1? If not, resizing and image will give different connectivity. Please add a comment on this. 
-If it is assumed that B = [0,1]^3, say so and that for population studies all subjects should be mapped to a template?>
+$\mathbf{D}(\mathbf{x})$ is a pointwise diffusion tensor which is extracted by the DTI [@le2001diffusion], $\mathbf{m}_{\text{wm}}$ and $\mathbf{m}_{\text{gm}}$ are the segmentation mask of white matter and grey matter, and $\Tilde{\alpha}\in\mathbb{R}_+$ is the ratio between the diffusivity in the white matter over the gray matter. From the literature, we set $\Tilde{\alpha}=10^{-2}$ [@giese1996migration]. We solve the above PDE in the time period $t\in\left[0, T\right]$, where $T$ is the time horizon. Please be aware that all brain images have been registered to a healthy brain template with $\mathbb{R}^{256\times256\times256}$. Altering the image size may result in different connectivity patterns.
 
-We remark that the only free parameter in our formulation is the time horizon $T$. In our solver we have set this value to $T=10$. <!--- GB: T=10 is strange; shouldn't this be patient specific? --->
- We set this time horizon to ensure the furthest edge-end region can always receive sufficient concentration. For the PDE solver, we use the Crank-Nicolson method for discretization in time in our solvers [@crank1996practical]. 
-<!--GB: This method is implicit and unconditionally stable. --->
- The spatial domain is discretized using a pseudo-spectral Fourier method [@gholami2016inverse]. The resulting linear system for the Crank-Nicolson method is solved using a matrix-free preconditioned Conjugate Gradient method. We present the input used in `BrainDiffusion` and the PDE output in \autoref{fig:img}. The DTI, represented as $\mathbf{D}(\mathbf{x})$, provides information about diffusivity within the domain $\mathcal{B}$. The T1 MR image defines the white matter and gray matter regions. The brain parcellation operation establishes a graph structure, while the diffusion image serves as the solution to the aforementioned PDE, with one ROI being designated as the source region.
+The PDE forward solve ends when the region farthest from the edge-start reaches a steady-state solution, and $T$ represents the associated time horizon. For the PDE solver, we use the Crank-Nicolson method for discretization in time in our solvers [@crank1996practical]. The spatial domain is discretized using a pseudo-spectral Fourier method [@gholami2016inverse]. The resulting linear system for the Crank-Nicolson method is solved using a matrix-free preconditioned Conjugate Gradient method. We present the input used in `BrainDiffusion` and the PDE output in \autoref{fig:img}. The DTI, represented as $\mathbf{D}(\mathbf{x})$, provides information about diffusivity within the domain $\mathcal{B}$. The T1 MR image defines the white matter and gray matter regions. The brain parcellation operation establishes a graph structure, while the diffusion image serves as the solution to the aforementioned PDE, with one ROI being designated as the source region.
 
 The construction of the graph adjacency matrix involves the following steps:
 
@@ -78,13 +67,13 @@ The construction of the graph adjacency matrix involves the following steps:
 W_{ij} = \int_{0}^T\int_{\mathcal{T}_j} \mathbf{c}(\mathbf{x}, t)\mathbf{1}_{\left\{\mathbf{c}>\mathbf{c}_{\infty}\right\}}d\mathbf{x}dt.
 \end{equation}
 Here, $\mathcal{T}_j$ represents the volume region of the $j_\mathrm{th}$ ROI. $W_{ij}$ corresponds to the source $\mathcal{S}$ for ROI $i$, and $\mathbf{c}_{\infty}=\frac{1}{\left|\mathcal{B}\right|}\int_{\mathcal{S}}\mathbf{c}(\mathbf{x}, 0)d\mathbf{x}$ is the steady state  ($T=\infty$) solution for each voxel value. $W_{ij}$ contributes to the off-diagonal weight in the adjacency matrix. We set the diagonal weight $W_{ii} = \sum_{j\neq i} W_{ij}$.
-<!-- GB: I thought you also do a row-wise normalization. This needs to be included here. --->
+
+3. We normalize $\mathbf{W}$ row-wise by dividing each row by its diagonal entry.
 
 Our implementation requires GPU support and lacks a CPU version, with parallelization facilitated using [Joblib](https://joblib.readthedocs.io). On a GPU card, we simultaneously solve four PDEs, enhancing computational efficiency and accelerating the graph construction process.
 
 # Usage
 
-<!-- GB: Do we require GPUs? If so, say it. Do we only support NVIDIA? If so, say it. Do we have any other dependencies besides cupy? If yes, why do we list cupy only?--->
-`BrainDiffusion` requires GPUs and Python's 'cupy'. The package includes a main function file ('BrainDiffusion/diffusion_brain_net.py') and a utility file ('BrainDiffusion/operators.py'). An example usage ('example.py') is also provided. To effectively use the package, users should have processed DTI data and patient parcellation. A default dataset and parcellation are available in 'example.py'. Users should keep the folder structure consistent with the example. For detailed installation, instructions, and testing, please refer to the package's [GitHub](https://github.com/ut-padas/alz/tree/main/code/BrainDiffusion) repository. 
+`BrainDiffusion` requires GPUs and Python's 'cupy'. Other requirements like 'nibabel', 'pandas' and 'joblib' will be installed automatically while installing the package. The package is tested under NVIDIA GPU Quadro RTX 5000. It includes a main function file ('BrainDiffusion/diffusion_brain_net.py') and a utility file ('BrainDiffusion/operators.py'). An example usage ('example.py') is also provided. To effectively use the package, users should have processed DTI data and patient parcellation. A default dataset and parcellation are available in 'example.py'. Users should keep the folder structure consistent with the example. For detailed installation, instructions, and testing, please refer to the package's [GitHub](https://github.com/CoderNoMercy/BrainDiffusion/) repository. 
 
 # References
