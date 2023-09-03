@@ -21,7 +21,7 @@ authors:
 affiliations:
   - name: The University of Texas at Austin, USA
     index: 1
-date: 17 July 2023
+date: 2 September 2023
 bibliography: paper.bib
 link-citations: true
 ---
@@ -54,7 +54,7 @@ where $\mathbf{K}(\mathbf{x})$ is defined as
 \begin{align}
   \mathbf{K}(\mathbf{x}) = \mathbf{D}(\mathbf{x}) (\mathbf{m}_{\text{wm}} + \Tilde{\alpha} \mathbf{m}_{\text{gm}}).
 \end{align}
-$\mathbf{D}(\mathbf{x})$ is a pointwise diffusion tensor which is extracted by the DTI [@le2001diffusion], $\mathbf{m}_{\text{wm}}$ and $\mathbf{m}_{\text{gm}}$ are the segmentation mask of white matter and grey matter, and $\Tilde{\alpha}\in\mathbb{R}_+$ is the ratio between the diffusivity in the white matter over the gray matter. From the literature, we set $\Tilde{\alpha}=10^{-2}$ [@giese1996migration]. We solve the above PDE in the time period $t\in\left[0, T\right]$, where $T$ is the time horizon. Please be aware that all brain images have been registered to a healthy brain template with $\mathbb{R}^{256\times256\times256}$. Altering the image size may result in different connectivity patterns.
+$\mathbf{D}(\mathbf{x})$ is a pointwise diffusion tensor which is extracted by the DTI [@le2001diffusion], $\mathbf{m}_{\text{wm}}$ and $\mathbf{m}_{\text{gm}}$ are the segmentation mask of white matter and grey matter, and $\Tilde{\alpha}\in\mathbb{R}_+$ is the ratio between the diffusivity in the white matter over the gray matter. From the literature, we set $\Tilde{\alpha}=10^{-2}$ [@giese1996migration]. We solve the above PDE in the time period $t\in\left[0, T\right]$, where $T$ is the time horizon. Please note that we've non-dimensionalized the brain domain to $\mathcal{B}=\left[0, 1\right]^3$, and for population studies, all subjects need to be mapped to a template.
 
 The PDE forward solve ends when the region farthest from the edge-start reaches a steady-state solution, and $T$ represents the associated time horizon. For the PDE solver, we use the Crank-Nicolson method for discretization in time in our solvers [@crank1996practical]. The spatial domain is discretized using a pseudo-spectral Fourier method [@gholami2016inverse]. The resulting linear system for the Crank-Nicolson method is solved using a matrix-free preconditioned Conjugate Gradient method. We present the input used in `BrainDiffusion` and the PDE output in \autoref{fig:img}. The DTI, represented as $\mathbf{D}(\mathbf{x})$, provides information about diffusivity within the domain $\mathcal{B}$. The T1 MR image defines the white matter and gray matter regions. The brain parcellation operation establishes a graph structure, while the diffusion image serves as the solution to the aforementioned PDE, with one ROI being designated as the source region.
 
