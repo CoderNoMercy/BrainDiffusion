@@ -11,11 +11,11 @@ authors:
     equal-contrib: true
     affiliation: 1
   - name: Ali Ghafouri
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0003-3345-4685
     equal-contrib: true
     affiliation: 1
   - name: George Biros
-    orcid: 0000-0000-0000-0000
+    orcid: 0000-0002-0033-3994
     equal-contrib: true
     affiliation: 1
 affiliations:
