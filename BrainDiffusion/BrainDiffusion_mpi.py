@@ -19,11 +19,16 @@ import cupy as cp
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from BrainDiffusion.operators import *
+from BrainDiffusion.operators_gpu import *
 from cupyx.scipy.ndimage import gaussian_filter
 import joblib
 import scipy.io as sio
 
+import mpi4py
+mpi4py.rc.recv_mprobe = False
+from mpi4py import MPI
+from socket import gethostname
+from sys import argv
 
 class params:
     ''' Class describing brain diffusion process.
@@ -77,7 +82,7 @@ class params:
             assert (self.IOmega_y.shape == (N, N, N))
             assert (self.IOmega_z.shape == (N, N, N))
 
-    def forward(self, roi_id, device):
+    def forward(self, roi_id, device, subj_name):
         ''' execute forward of PDE
 
         :param roi_id: current roi_id as source region, and other regions as targets.
@@ -86,7 +91,7 @@ class params:
         '''
 
         with cp.cuda.Device(device):
-            params = solve_forward_cg(self, roi_id)
+            params = solve_forward_cg(self, roi_id, subj_name)
 
         return params.c0, params.c1_accum_t
 
@@ -101,6 +106,14 @@ class params:
         roi_list_all = dic_muse['ROI_INDEX'].to_numpy()
         template = nib.load(self.path['labels'])
         template_data = np.asarray(template.get_fdata())
+        brain_background = np.zeros_like(template_data)
+        brain_background[np.where(template_data==0)] = 1
+        fname = os.path.join(self.dat_dir, 'data/{}/brain_background.npy'.format(subj_name))
+        np.save(fname, brain_background)
+        # brain_region = np.zeros_like(template_data)
+        # brain_region[np.where(template_data!=0)] = 1
+        # fname = os.path.join(self.dat_dir, 'data/{}'.format(subj_name))
+        # comp_BrainBoundary(brain_region, fname)
         segmentation_result = np.zeros_like(template_data)
         for roi_id in roi_list_all:
             seg_type = dic_muse.loc[dic_muse['ROI_INDEX']==roi_id]['TISSUE_SEG'].item()
@@ -215,6 +228,7 @@ def eval_diffusion(use_default_data,
                    template_file,
                    subj_name,
                    output_path, diff_time=100):
+
     ''' Evaluate the PDE solution for all regions in brain. Parall computing for all regions.
 
     :param use_default_data: bool. if true. an example default data will be downloaded to dti_path.
@@ -226,7 +240,14 @@ def eval_diffusion(use_default_data,
     :return: save the resulting 3D PDE solution under output_path.
     '''
 
-    if use_default_data:
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+    if rank == 0:
+        print('Starting MPI for {} jobs on each of the {} ranks\n'.format(int(np.ceil(119/size)), size))
+    comm.Barrier()
+
+    if use_default_data and rank == 0 and not os.path.exists(dti_path + '/data'):
         print('Downloading default DTI file...')
         filename = dti_path + '/data.zip'
         os.system('gdown 1xVmNZqsyFT_1Hbg-zikSIAntQm23m4Iq -O {}'.format(filename))
@@ -255,40 +276,37 @@ def eval_diffusion(use_default_data,
     num_regions = len(labels_list)
 
     '''
-    joblib here to parallely compute for four regions of interests. Therefore, four classes will be initialized, and 
+    MPI here to parallely compute for four regions of interests. Therefore, four classes will be initialized, and 
     executed on four GPUs.
     '''
-    pool = joblib.Parallel(n_jobs=4, prefer="threads", verbose=1)
-    pool(joblib.delayed(context_init)(device) for device in [0, 1, 2, 3])
-    test_params = pool(joblib.delayed(params)(device, path, dat_dir, diff_time) for device in [0, 1, 2, 3])
-    test_params[0].construct_segmentation(subj_name)
-    path['seg'] = os.path.join(dat_dir, 'data/{}/segmentation_from_labels.nii.gz'.format(subj_name))
-    pool(joblib.delayed(test_params[device].add_seg_diff_tensor)(device) for device in [0, 1, 2, 3])
 
     roi_groups = []
-    for i in range(int(np.ceil(num_regions / 4))):
-        roi_groups.append([test_params[0].labels_list[4 * i: (i + 1) * 4]])
+    for i in range(int(np.ceil(num_regions / size))):
+        roi_groups.append(labels_list[size * i: (i + 1) * size])
 
+    context_init(rank % 4)
+    test_params = params(rank % 4, path, dat_dir, diff_time)
+    test_params.construct_segmentation(subj_name)
+    path['seg'] = os.path.join(dat_dir, 'data/{}/segmentation_from_labels.nii.gz'.format(subj_name))
+    test_params.add_seg_diff_tensor(rank % 4)
+
+    if not os.path.exists(test_params.out_dir):
+        os.mkdir(test_params.out_dir)
     for (i_group, roi_group) in enumerate(roi_groups):
 
-        checkpoint_flag = 1
-        for (roi_ind, roi_id) in enumerate(roi_group[0]):
-            fname_1 = os.path.join(test_params[roi_ind].out_dir, 'c1_%d.nii.gz' % roi_id)
-            if not os.path.exists(fname_1):
-                checkpoint_flag = 0
-        if checkpoint_flag:
+        if rank >= len(roi_group):
+            continue
+        roi_id = roi_group[rank]
+        # print('rank: {}, roi_id: {}'.format(rank, roi_id))
+        fname_1 = os.path.join(test_params.out_dir, 'c1_%d.nii.gz' % roi_id)
+        if os.path.exists(fname_1):
             continue
 
-        print('Now executing ROI group: ', roi_group, ' ---progress: {}/{}'.format(i_group+1, len(roi_groups)))
-        result = pool(joblib.delayed(test_params[device].forward)(roi_id, device) for roi_id, device in [(roi_group[0][i], i) for i in range(len(roi_group[0]))])
+        print('Now executing ROI group: ', roi_group, ' ---progress: {}/{} in MPI rank {}'.format(i_group+1, len(roi_groups), rank))
+        result = test_params.forward(roi_id, rank % 4, subj_name)
 
-        roi_ind = 0
-        for roi_id in roi_group[0]:
-            if not os.path.exists(test_params[roi_ind].out_dir):
-                os.mkdir(test_params[roi_ind].out_dir)
-            fname_1 = os.path.join(test_params[roi_ind].out_dir, 'c1_%d.nii.gz' % roi_id) # save the resulting solution.
-            writeNII(result[roi_ind][1].get(), fname_1, ref_image=test_params[roi_ind].affine)
-            roi_ind += 1
+        fname_1 = os.path.join(test_params.out_dir, 'c1_%d.nii.gz' % roi_id) # save the resulting solution.
+        writeNII(result[1].get(), fname_1, ref_image=test_params.affine)
 
 
 def update_conn_mtx(labels, c, source_roi, roi_list, conn_mtx):

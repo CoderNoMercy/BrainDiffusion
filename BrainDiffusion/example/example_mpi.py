@@ -14,7 +14,7 @@ Version: Jul. 17, 2023
 '''
 
 import os
-from BrainDiffusion import diffusion_brain_net
+from BrainDiffusion import BrainDiffusion_mpi
 import scipy.io as sio
 import numpy as np
 
@@ -22,7 +22,7 @@ import numpy as np
 use_default_data=True
 
 # the path to save DTI data
-dti_path = os.path.dirname(os.path.realpath(__file__)) 
+dti_path = os.path.dirname(os.path.realpath(__file__))
 
 # the path to save Template (parcellation) of patient
 template_file = os.path.dirname(os.path.realpath(__file__)) + '/data/P_BCNZ72/Template4_warped_labels.nii.gz'
@@ -35,17 +35,15 @@ output_path = dti_path
 
 # function to solve time-dependent PDE and save result in output_path
 # Notice that diff_time=1 is only for a quick example. I would suggest diff_time=100 for sufficient diffusion.
-diffusion_brain_net.eval_diffusion(use_default_data, dti_path, template_file, subj_name, output_path, diff_time=100)
+BrainDiffusion_mpi.eval_diffusion(use_default_data, dti_path, template_file, subj_name, output_path, diff_time=100)
 
 # construct connectivity matrix using the following function.
 # The constructed matrix will be saved in conn_output_fname.
 conn_output_fname = output_path + '/conn.mat'
-diffusion_brain_net.gen_conn_from_diffusion(dti_path, template_file, output_path, conn_output_fname)
+BrainDiffusion_mpi.gen_conn_from_diffusion(dti_path, template_file, output_path, conn_output_fname)
 
-# sanity check for the connectivity matrix. If use default dataset, the connecitivity matrix should has 
+# sanity check for the connectivity matrix. If use default dataset, the connecitivity matrix should has
 # shape (114, 114) and it should be a symmetric real matrix.
 conn_mtx = np.asarray(sio.loadmat(conn_output_fname)['data']).astype('float')
 print('connectivity matrix size', conn_mtx.shape)
 print('Is it symmetric? ', np.array_equal(conn_mtx, conn_mtx.T))
-
-

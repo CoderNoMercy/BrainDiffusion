@@ -6,7 +6,7 @@ except Exception:
 
 setup(
     name='BrainDiffusion',
-    version='0.1.0',
+    version='0.1.5',
     description='Python package for anatomic connectivity of brain',
     author=' ',
     author_email=' ',
@@ -21,7 +21,6 @@ setup(
                       ],
 
     classifiers=[
-        'Development Status :: 1 - Planning',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: BSD License',
         'Operating System :: POSIX :: Linux',

@@ -8,6 +8,7 @@ Author: Zheyu Wen, Ali Ghafouri, George Biros
 Version: Jul 17th, 2023
 
 '''
+import copy
 
 import cupy as cp
 import os
@@ -63,7 +64,7 @@ def compute_div(params, c):
 
   ''' compute div(T(x) grad(c(x)))
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :param c: current concentration tensor c(x, t)
   :return: right hand side of the PDE equation.
   '''
@@ -116,7 +117,7 @@ def applyA_lhs(params, c):
 
   ''' After Time discretization and Spatial discretization, here we rearange the term and compute the left hand side
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :param c: current concentration c(x, t)
   :return: left hand side of discretized PDE.
   '''
@@ -136,7 +137,7 @@ def applyb_rhs(params, c):
 
   ''' After Time discretization and Spatial discretization, here we rearange the term and compute the left hand side
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :param c: current concentration c(x, t)
   :return: right hand side of discretized PDE.
   '''
@@ -146,7 +147,7 @@ def applyb_rhs(params, c):
   c = c.reshape((N,N,N)).copy()
 
   c = gaussian_filter(c.copy(), 1)
-  div = compute_div(params, c) 
+  div = compute_div(params, c)
   
   bc = c + dt * 0.5 * div
 
@@ -157,7 +158,7 @@ def apply_Pinv(params, c):
 
   ''' Apply the precondition matrix to the left/right hand side
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :param c: current concentration c(x, t)
   :return: left/right hand side of discretized PDE.
   '''
@@ -231,11 +232,11 @@ def solve_cg_cupy(A, b, x0=None, maxiter=100, term_tol=1e-6, verbose=1):
 
 
 
-def solve_forward_cg(params, roi_id):
+def solve_forward_cg(params, roi_id, subj_name):
 
   ''' Solve the diffusion PDE utilizing all functions mentioned above.
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :param roi_id: id of region of interest
   :return: class params with PDE solution referred as params.c1
   '''
@@ -251,6 +252,7 @@ def solve_forward_cg(params, roi_id):
   gm = params.gm_ref
   k_gm_wm = params.k_gm_wm
 
+  gm_plus_wm =  gm + wm
   '''
     below compute Kxx, Kxy ... for anisotropic diffusion in the directions of 
     xx, xy, xz, yy, yz, zz.
@@ -291,8 +293,9 @@ def solve_forward_cg(params, roi_id):
 
   c = cp.zeros(Kxx.shape)
   c[params.labels == roi_id] = 1.0
-
-  c_inf = cp.mean(c)
+  cinit = copy.deepcopy(c)
+  cinit_sum = np.sum(cinit)
+  c_inf = cinit_sum / (np.sum(gm_plus_wm))
   c_accum_result = cp.zeros(Kxx.shape)
 
   params.c = c.copy() 
@@ -306,21 +309,32 @@ def solve_forward_cg(params, roi_id):
 
   params = compute_epicenter(params)
   far_reg = params.far_reg_dict[str(roi_id)]
-  init_mass = cp.linalg.norm(c.flatten().copy())
-
+  # init_mass = cp.linalg.norm(c.flatten().copy())
+  # fname = os.path.join(params.dat_dir, 'data/{}/brain_background.npy'.format(subj_name))
+  # brain_background = np.load(fname)
   t_max = params.t_max
   '''
     Below solve the time dependent PDE each time step at a time. t_max is determined by time horizon and time step size.
   '''
+  old_tar_mean_mass = 0
   for t in range(t_max):
 
     c = solve_cg_cupy(f_A, f_b(c.flatten()), c.flatten(), maxiter=params.maxiter, term_tol=params.term_tol, verbose=0)
     c = cp.real(c.copy())
     c[c < 0.0] = 0.0
+    # print('total mass at step: {} is {}'.format(t, np.sum(c)))
 
     c_3d = cp.real(c.reshape((N, N, N)))
+    # c_3d[np.where(brain_background==1)] = 0
+    # c_3d[c_3d > c_inf] -= (np.sum(c_3d) - cinit_sum) / np.sum(c_3d[c_3d > c_inf]) * c_3d[c_3d > c_inf]
+
+
     c_3d_copy = c_3d.copy()
-    c_3d_copy[c_3d_copy < c_inf] = 0
+
+    # ## for eximining the trajectory
+    # fname_1 = os.path.join(params.out_dir, 'c1_{}_t_{}.nii.gz'.format(roi_id, t)) # save the resulting solution.
+    # writeNII(c_3d_copy.get(), fname_1, ref_image=params.affine)
+    c_3d_copy[c_3d_copy * t_max < c_inf] = 0
     c_accum_result += c_3d_copy
     tmp = c_3d[params.labels == far_reg]
     # tar_mass = cp.linalg.norm(tmp.flatten())
@@ -330,8 +344,10 @@ def solve_forward_cg(params, roi_id):
 
     tar_mean_mass = np.mean(tmp.flatten())
     # print("t = %d, Tar_mean_mass (%d) = %4e / %.4e (%d)"%(t+1, far_reg, tar_mean_mass, c_inf, roi_id))
-    if tar_mean_mass > c_inf * 1.1:
+    # if tar_mean_mass > c_inf * 1.1:
+    if old_tar_mean_mass >= tar_mean_mass:
       break
+    old_tar_mean_mass = copy.deepcopy(tar_mean_mass)
 
   c_3d = cp.real(c.reshape((N, N, N)))
   c_3d = gaussian_filter(c_3d.copy(), 1)
@@ -346,7 +362,7 @@ def compute_epicenter(params):
   ''' Compute center of mass for each region of interest. The aim is to find the furthest region to the source region.
       Therefore, the quit condition can be set as when the furthest region receives sufficient concentration by diffusion.
 
-  :param params: class params initialized in diffusion_brain_net.py
+  :param params: class params initialized in BrainDiffusion_gpu.py
   :return: updated params with epicenter of each region of interest.
   '''
   
@@ -395,6 +411,42 @@ def compute_epicenter(params):
   
   
   return params
+
+def comp_BrainBoundary(img, fpath):
+
+  N = img.shape[0]
+  bound_img_back = np.zeros_like(img)
+  bound_img_brain = np.zeros_like(img)
+  for x in range(N):
+    slides = img[x]
+    if np.any(slides > 0):
+      # yboundary = 1
+      # first_ynonzero = 0
+      for y in range(N):
+        vec = slides[y]
+        if np.any(slides > 0):
+          # first_ynonzero = 1
+          for z1 in range(1, N):
+            if vec[z1] > 0:
+              bound_img_back[x, y, z1-1] = 1
+              bound_img_brain[x, y, z1] = 1
+              break
+          for z2 in range(N-1)[::-1]:
+            if vec[z2] > 0:
+              bound_img_back[x, y, z2+1] = 1
+              bound_img_brain[x, y, z2] = 1
+              break
+        # if yboundary:
+        #   bound_img_back[x, y-1, z1:z2] = 1
+        #   bound_img_brain[x, y, z1:z2] = 1
+        #   yboundary = 0
+        # if first_ynonzero and not np.any(slides > 0):
+        #   break
+      # bound_img_back[x, y+1, z1:z2] = 1
+      # bound_img_brain[x, y, z1:z1] = 1
+
+  np.save(os.path.join(fpath, 'brain_boundary.npy'), bound_img_brain)
+  np.save(os.path.join(fpath, 'background_boundary.npy'), bound_img_back)
     
     
 
