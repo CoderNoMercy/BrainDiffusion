@@ -21,14 +21,14 @@ authors:
 affiliations:
   - name: The University of Texas at Austin, USA
     index: 1
-date: 2 September 2023
+date: 23 Oct. 2023
 bibliography: paper.bib
 link-citations: true
 ---
 
 # Summary
 
-`BrainDiffusion` is a Python package for creating a weighted graph representing brain white-matter fiber tract connectivity between gray matter regions. Such graphs are commonly used in neuroimaging workflows. The code input is (1) a magnetic resonance (MR) T1 image; (2) an MR diffusion-tensor image (DTI); and (3) a brain parcellation, which segments the MR T1 image into regions of interest (ROIs). The code output is a directed graph with vertices as gray matter ROIs, and edge weights indicating inter-region connectivity strength. In contrast to traditional methods involving parameter tuning relating to denoising, fiber groupings, and resolving fiber intersections, `BrainDiffusion` uses a different approach. It solves an anisotropic partial differential equation (PDE) on the MR image space to construct an anatomical connectivity matrix. To find the edge weights between a  vertex (source ROI) to the all the other vertices (target ROIs), the algorithm assigns a pseudo-concentration in the start ROI, solves a mass diffusion equation, and integrates the resulting concentration in the target ROIs. These per-ROI integrals are the edge weights. The graph weights are computed by by repeating this step for each vertex.  Notably, this technique does not reconstruct explicit fiber tracks; it only relies on MR DTI and parcellation data. The method requires $O(m)$ PDE solves, where $m$ is the number of parcels. 
+`BrainDiffusion` is a Python package for creating a weighted graph representing brain white-matter fiber tract connectivity between gray matter regions. Such graphs are commonly used in neuroimaging workflows. The code input is (1) a magnetic resonance (MR) T1 image; (2) an MR diffusion-tensor image (DTI); and (3) a brain parcellation, which segments the MR T1 image into regions of interest (ROIs). The code output is a directed graph with vertices as gray matter ROIs, and edge weights indicating inter-region connectivity strength. In contrast to traditional methods involving parameter tuning relating to denoising, fiber groupings, and resolving fiber intersections, `BrainDiffusion` uses a different approach. It solves an anisotropic partial differential equation (PDE) on the MR image space to construct an anatomical connectivity matrix. To find the edge weights between a  vertex (source ROI) to the all the other vertices (target ROIs), the algorithm assigns a pseudo-concentration in the start ROI, solves a mass diffusion equation, and integrates the resulting concentration in the target ROIs. These per-ROI integrals are the edge weights. The graph weights are computed by by repeating this step for each vertex. Notably, this technique does not reconstruct explicit fiber tracks; it only relies on MR DTI and parcellation data. The method requires $O(m)$ PDE solves, where $m$ is the number of parcels. 
 
 # Statement of need
 
@@ -70,10 +70,10 @@ Here, $\mathcal{T}_j$ represents the volume region of the $j_\mathrm{th}$ ROI. $
 
 3. We normalize $\mathbf{W}$ row-wise by dividing each row by its diagonal entry.
 
-Our implementation requires GPU support and lacks a CPU version, with parallelization facilitated using [Joblib](https://joblib.readthedocs.io). On a GPU card, we simultaneously solve four PDEs, enhancing computational efficiency and accelerating the graph construction process.
+Our implementation has both GPU and CPU versions, with parallelization facilitated using MPI. On each GPU card, we simultaneously solve four PDEs, enhancing computational efficiency and accelerating the graph construction process.
 
 # Usage
 
-`BrainDiffusion` requires GPUs and Python's 'cupy'. Other requirements like 'nibabel', 'pandas' and 'joblib' will be installed automatically while installing the package. The package is tested under NVIDIA GPU Quadro RTX 5000. It includes a main function file ('BrainDiffusion/diffusion_brain_net.py') and a utility file ('BrainDiffusion/operators.py'). An example usage ('example.py') is also provided. To effectively use the package, users should have processed DTI data and patient parcellation. A default dataset and parcellation are available in 'example.py'. Users should keep the folder structure consistent with the example. For detailed installation, instructions, and testing, please refer to the package's [GitHub](https://github.com/CoderNoMercy/BrainDiffusion/) repository. 
+`BrainDiffusion` has GPU version using Python's 'cupy'. Other requirements like 'nibabel', 'pandas', 'joblib' and 'mpi4py' will be installed automatically while installing the package. The package is tested under NVIDIA GPU Quadro RTX 5000. It includes main function files ('BrainDiffusion/BrainDiffusion_cpu.py' for CPU version, 'BrainDiffusion/BrainDiffusion_gpu.py' for GPU and Joblib, and 'BrainDiffusion/BrainDiffusion_mpi.py' for GPU and MPI version) and utility files ('BrainDiffusion/operators_cpu.py' for CPU version and 'BrainDiffusion/operators_gpu.py' for GPU version). Two example usage scripts ('BrainDiffusion/example/example_gpu.py' and 'BrainDiffusion/example/example_mpi.py') are also provided. To effectively use the package, users should have processed DTI data and patient parcellation. A default dataset and parcellation are available in example scripts. Users should keep the folder structure consistent with the example. For detailed installation, instructions, and testing, please refer to the package's [GitHub](https://github.com/CoderNoMercy/BrainDiffusion/) repository. 
 
 # References
