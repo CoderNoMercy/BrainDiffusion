@@ -70,7 +70,7 @@ Here, $\mathcal{T}_j$ represents the volume region of the $j_\mathrm{th}$ ROI. $
 
 3. We normalize $\mathbf{W}$ row-wise by dividing each row by its diagonal entry.
 
-Our implementation has both GPU and CPU versions, with parallelization facilitated using MPI. On each GPU card, we simultaneously solve four PDEs, enhancing computational efficiency and accelerating the graph construction process.
+Our implementation has both GPU and CPU versions, with parallelization facilitated using Message Passing Interface (MPI) [@gropp1996high]. We also use a python package [Joblib](https://joblib.readthedocs.io/en/stable/) to optimize our code. Joblib is a package focusing on optimization on numpy arrays for large data. On each GPU card, we simultaneously solve four PDEs, enhancing computational efficiency and accelerating the graph construction process.
 
 # Usage
 
