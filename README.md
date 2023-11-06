@@ -23,7 +23,7 @@ under current folder
 
 ## Usage
 
-An example code is available in BrainDiffusion/example/example.py to construct a connectivity matrix using the default DTI data.
+Example codes are available in BrainDiffusion/example/ to construct a connectivity matrix using the default DTI data.
 
 
 
