@@ -18,6 +18,7 @@ setup(
                       'joblib>=1.1.1',
                       'scipy>=1.10.0',
                       'gdown',
+                      'mpi4py',
                       ],
 
     classifiers=[
