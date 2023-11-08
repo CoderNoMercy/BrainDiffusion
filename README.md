@@ -25,7 +25,9 @@ Example codes are available in BrainDiffusion/example/ to construct a connectivi
 
 ## Contributors
 
-Zheyu Wen, Ali Ghafouri, George Biros
+Zheyu Wen, Ali Ghafouri, George Biros. 
+
+If you want to contribute to BrainDiffusion, read the guidlines [CONTRIBUTING.md](CONTRIBUTING.md).
 
 
 
