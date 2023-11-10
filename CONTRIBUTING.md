@@ -6,7 +6,7 @@ Thanks for taking the time to contribute!
 
 This project and everyone participating in it is governed by the
 [BrainDiffusion Code of Conduct](https://github.com/CoderNoMercy/BrainDiffusion/CODE_OF_CONDUCT.md).
-By participating, you are expected to uphold this code. Please report unacceptable behavior to <zheyw@umich.edu>.
+By participating, you are expected to uphold this code. Please report unacceptable behavior to <zheyw@utexas.edu>.
 
 ## Posing Question / reporting bugs
 
