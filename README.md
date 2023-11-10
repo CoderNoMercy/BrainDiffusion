@@ -3,7 +3,7 @@
 
 `BrainDiffusion` solves an anisotropic partial differential equation (PDE) on the MR image space to construct an anatomical connectivity matrix. To find the edge weights between a  vertex (source ROI) to all the other vertices (target ROIs), the algorithm assigns a pseudo-concentration in the start ROI, solves a mass diffusion equation, and integrates the resulting concentration in the target ROIs. These per-ROI integrals are the edge weights. The method requires $O(m)$ PDE solves, where $m$ is the number of parcels.
 
-Our latest publication in the MICCAI workshop illustrates the context in which this tool is utilized. Please consult the paper titled 'A Two-Species Model for Abnormal Tau Dynamics in Alzheimer's Disease' for further details.
+Our latest publication in the MICCAI workshop illustrates the context in which this tool is utilized. Please consult the paper titled 'A Two-Species Model for Abnormal Tau Dynamics in Alzheimer's Disease' for further details. This tool is also used in our IEEE-TMI manuscript.
 
 ## Requirements
 
