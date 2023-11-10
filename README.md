@@ -11,7 +11,9 @@ Our latest publication in the MICCAI workshop illustrates the context in which t
 
 ## Requirements
 
-This is a GPU-based code. A suitable version of [cupy](https://docs.cupy.dev/en/stable/install.html) should be pre-installed in the system. Other requirements will be automatically downloaded.
+We provide both GPU and CPU version of the code.
+A suitable version of [cupy](https://docs.cupy.dev/en/stable/install.html) should be pre-installed in the system. 
+Other requirements will be automatically downloaded when you install the package.
 
 ## Install
 
