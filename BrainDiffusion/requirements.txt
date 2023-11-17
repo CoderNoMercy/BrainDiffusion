@@ -4,3 +4,4 @@ pandas>=1.5.2
 joblib>=1.1.1
 scipy>=1.10.0
 gdown
+mpi4py
