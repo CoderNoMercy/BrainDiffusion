@@ -16,7 +16,7 @@ import nibabel as nib
 import numpy as np
 from cupyx.scipy.ndimage import gaussian_filter
 from cupyx.scipy.sparse.linalg import cg
-from cupyx.scipy.sparse.linalg import LinearOperator
+# from cupyx.scipy.sparse.linalg import LinearOperator
 
 
 def writeNII(img, filename, affine=None, ref_image=None):
@@ -64,7 +64,7 @@ def compute_div(params, c):
 
   ''' compute div(T(x) grad(c(x)))
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :param c: current concentration tensor c(x, t)
   :return: right hand side of the PDE equation.
   '''
@@ -91,19 +91,19 @@ def compute_div(params, c):
   Kzz = params.Kzz
  
   tmp = Kxx * grad_x + Kxy * grad_y + Kxz * grad_z 
-  tmp = gaussian_filter(tmp.copy(), params.gaussian_sigma)
+  tmp = gaussian_filter(tmp.copy(), 1)
   
   x_hat = cp.fft.fftn(tmp)
   x_hat *= IOmega_x
  
   tmp = Kxy*grad_y + Kyy*grad_y + Kyz*grad_z 
-  tmp = gaussian_filter(tmp.copy(), params.gaussian_sigma)
+  tmp = gaussian_filter(tmp.copy(), 1)
 
   y_hat = cp.fft.fftn(tmp)
   y_hat *= IOmega_y
   
   tmp = Kxz*grad_x + Kyz*grad_y + Kzz*grad_z
-  tmp = gaussian_filter(tmp.copy(), params.gaussian_sigma)
+  tmp = gaussian_filter(tmp.copy(), 1)
   
   z_hat = cp.fft.fftn(tmp)
   z_hat *= IOmega_z
@@ -117,7 +117,7 @@ def applyA_lhs(params, c):
 
   ''' After Time discretization and Spatial discretization, here we rearange the term and compute the left hand side
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :param c: current concentration c(x, t)
   :return: left hand side of discretized PDE.
   '''
@@ -125,7 +125,7 @@ def applyA_lhs(params, c):
   dt = params.dt 
   N = params.N
   c = c.reshape((N, N, N)).copy()
-  c = gaussian_filter(c.copy(), params.gaussian_sigma)
+  c = gaussian_filter(c.copy(), 1)
   div = compute_div(params, c)
 
   Ac = c - dt * 0.5 * div
@@ -137,7 +137,7 @@ def applyb_rhs(params, c):
 
   ''' After Time discretization and Spatial discretization, here we rearange the term and compute the left hand side
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :param c: current concentration c(x, t)
   :return: right hand side of discretized PDE.
   '''
@@ -146,7 +146,7 @@ def applyb_rhs(params, c):
   N = params.N 
   c = c.reshape((N,N,N)).copy()
 
-  c = gaussian_filter(c.copy(), params.gaussian_sigma)
+  c = gaussian_filter(c.copy(), 1)
   div = compute_div(params, c)
   
   bc = c + dt * 0.5 * div
@@ -158,7 +158,7 @@ def apply_Pinv(params, c):
 
   ''' Apply the precondition matrix to the left/right hand side
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :param c: current concentration c(x, t)
   :return: left/right hand side of discretized PDE.
   '''
@@ -232,11 +232,11 @@ def solve_cg_cupy(A, b, x0=None, maxiter=100, term_tol=1e-6, verbose=1):
 
 
 
-def solve_forward_cg(params, roi_id, subj_name=''):
+def solve_forward_cg(params, roi_id, subj_name):
 
   ''' Solve the diffusion PDE utilizing all functions mentioned above.
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :param roi_id: id of region of interest
   :return: class params with PDE solution referred as params.c1
   '''
@@ -293,9 +293,9 @@ def solve_forward_cg(params, roi_id, subj_name=''):
 
   c = cp.zeros(Kxx.shape)
   c[params.labels == roi_id] = 1.0
-  # cinit = copy.deepcopy(c)
-  # cinit_sum = cp.sum(cinit)
-  # c_inf = cinit_sum / (np.sum(gm_plus_wm))
+  cinit = copy.deepcopy(c)
+  cinit_sum = np.sum(cinit)
+  c_inf = cinit_sum / (np.sum(gm_plus_wm))
   c_accum_result = cp.zeros(Kxx.shape)
 
   params.c = c.copy() 
@@ -305,14 +305,13 @@ def solve_forward_cg(params, roi_id, subj_name=''):
     construct left hand side and right hand side operator preparing solving the inverse problem by CG.
   '''
   f_A = lambda x: apply_Pinv(params, applyA_lhs(params, x))
-  f_A_op = LinearOperator((c.copy().flatten().shape[0], f_b(c.copy().flatten).shape[0]), matvec=f_A)
   f_b = lambda x: apply_Pinv(params, applyb_rhs(params, x))
 
   params = compute_epicenter(params)
-  # far_reg = params.far_reg_dict[str(roi_id)]
+  far_reg = params.far_reg_dict[str(roi_id)]
   # init_mass = cp.linalg.norm(c.flatten().copy())
-  # fname = os.path.join(params.dat_dir, 'data/{}/brain_background.npy'.format(subj_name))
-  # brain_background = np.load(fname)
+  fname = os.path.join(params.dat_dir, 'data/{}/brain_background.npy'.format(subj_name))
+  brain_background = np.load(fname)
   t_max = params.t_max
   '''
     Below solve the time dependent PDE each time step at a time. t_max is determined by time horizon and time step size.
@@ -321,38 +320,40 @@ def solve_forward_cg(params, roi_id, subj_name=''):
   for t in range(t_max):
 
     #c = solve_cg_cupy(f_A, f_b(c.flatten()), c.flatten(), maxiter=params.maxiter, term_tol=params.term_tol, verbose=0)
-    c, _ = cg(f_A_op, f_b(c.flatten), x0=c.flatten(), maxiter=params.maxiter, tol=params.term_tol)
+    c = cg(f_A, f_b(c.flatten()), c.flatten())
     c = cp.real(c.copy())
     c[c < 0.0] = 0.0
-    # print('total mass at step: {} is {}'.format(t, np.sum(c)))
+    print('total mass at step: {} is {}'.format(t, np.sum(c)))
 
     c_3d = cp.real(c.reshape((N, N, N)))
-    # c_3d[np.where(brain_background==1)] = 0
-    # c_3d[c_3d > c_inf] -= (np.sum(c_3d) - cinit_sum) / np.sum(c_3d[c_3d > c_inf]) * c_3d[c_3d > c_inf]
+    c_3d[np.where(brain_background==1)] = 0
+    # c_3d[cinit==1] /= (np.sum(c_3d) / cinit_sum)
+    # c_3d[c_3d > c_inf] -= (np.sum(c_3d) - cinit_sum) / np.sum(gm_plus_wm[c_3d > c_inf])
+    c_3d[c_3d > c_inf] -= (np.sum(c_3d) - cinit_sum) / np.sum(c_3d[c_3d > c_inf]) * c_3d[c_3d > c_inf]
 
 
     c_3d_copy = c_3d.copy()
 
-    # ## for eximining the trajectory
-    # fname_1 = os.path.join(params.out_dir, 'c1_{}_t_{}.nii.gz'.format(roi_id, t)) # save the resulting solution.
-    # writeNII(c_3d_copy.get(), fname_1, ref_image=params.affine)
-    # c_3d_copy[c_3d_copy * t_max < c_inf] = 0
+    ## for eximining the trajectory
+    fname_1 = os.path.join(params.out_dir, 'c1_{}_t_{}.nii.gz'.format(roi_id, t)) # save the resulting solution.
+    writeNII(c_3d_copy.get(), fname_1, ref_image=params.affine)
+    c_3d_copy[c_3d_copy * t_max < c_inf] = 0
     c_accum_result += c_3d_copy
-    # tmp = c_3d[params.labels == far_reg]
+    tmp = c_3d[params.labels == far_reg]
     # tar_mass = cp.linalg.norm(tmp.flatten())
     # print("t = %d, Tar_mass (%d) = %4e / %.4e (%d)"%(t+1, far_reg, tar_mass, init_mass, roi_id))
     # if tar_mass > 1e-8 * init_mass:
     #   break
 
-    # tar_mean_mass = np.mean(tmp.flatten())
+    tar_mean_mass = np.mean(tmp.flatten())
     # print("t = %d, Tar_mean_mass (%d) = %4e / %.4e (%d)"%(t+1, far_reg, tar_mean_mass, c_inf, roi_id))
     # if tar_mean_mass > c_inf * 1.1:
-    # if old_tar_mean_mass >= tar_mean_mass:
-    #   break
-    # old_tar_mean_mass = copy.deepcopy(tar_mean_mass)
+    if old_tar_mean_mass >= tar_mean_mass:
+      break
+    old_tar_mean_mass = copy.deepcopy(tar_mean_mass)
 
   c_3d = cp.real(c.reshape((N, N, N)))
-  c_3d = gaussian_filter(c_3d.copy(), params.gaussian_sigma)
+  c_3d = gaussian_filter(c_3d.copy(), 1)
   params.c1 = c_3d.copy()
   params.c1_accum_t = c_accum_result
   
@@ -364,7 +365,7 @@ def compute_epicenter(params):
   ''' Compute center of mass for each region of interest. The aim is to find the furthest region to the source region.
       Therefore, the quit condition can be set as when the furthest region receives sufficient concentration by diffusion.
 
-  :param params: class params initialized in BrainDiffusion_gpu.py
+  :param params: class params initialized in diffusion_brain_net.py
   :return: updated params with epicenter of each region of interest.
   '''
   
